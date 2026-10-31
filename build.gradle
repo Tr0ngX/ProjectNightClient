@@ -1,0 +1,170 @@
+plugins {
+    id 'java'
+    id 'java-library'
+}
+
+group = project.maven_group
+version = project.mod_version
+
+base {
+    archivesName = project.archives_base_name
+}
+
+java {
+    sourceCompatibility = JavaVersion.VERSION_25
+    targetCompatibility = JavaVersion.VERSION_25
+    withSourcesJar()
+}
+
+repositories {
+    maven {
+        name = 'Fabric'
+        url = 'https://maven.fabricmc.net/'
+    }
+    maven {
+        name = 'Minecraft Libraries'
+        url = 'https://libraries.minecraft.net/'
+    }
+    maven {
+        name = 'Meteor Dev'
+        url = 'https://maven.meteordev.org/releases'
+    }
+    maven {
+        name = 'JitPack'
+        url = 'https://jitpack.io'
+    }
+    mavenCentral()
+}
+
+def mcAppData = System.getenv('APPDATA') ? new File(System.getenv('APPDATA'), '.minecraft') : new File(System.getProperty('user.home'), '.minecraft')
+def mcVersionJar = new File(mcAppData, 'versions/26.2/26.2.jar')
+def fabricVersionJar = new File(mcAppData, 'versions/fabric-loader-0.19.3-26.2/fabric-loader-0.19.3-26.2.jar')
+def mcLibrariesDir = new File(mcAppData, 'libraries')
+def processedModsDir = new File(mcAppData, '.fabric/processedMods')
+
+configurations {
+    shade
+    implementation.extendsFrom(shade)
+}
+
+dependencies {
+    // Embedded Fabric API, MixinExtras, and ASM modules bundled in META-INF/jars
+    compileOnly fileTree(dir: 'src/main/resources/META-INF/jars', include: ['*.jar'])
+
+    // Unobfuscated Minecraft 26.2 Client JAR (Mojmap official namespace)
+    if (mcVersionJar.exists()) {
+        compileOnly files(mcVersionJar)
+    } else if (fabricVersionJar.exists()) {
+        compileOnly files(fabricVersionJar)
+    }
+
+    // Local Minecraft 26.2 & Fabric Loader 0.19.3 libraries cache (or standard Maven dependencies fallback)
+    if (mcLibrariesDir.exists()) {
+        compileOnly fileTree(dir: mcLibrariesDir, include: ['**/*.jar'], exclude: [
+            '**/*-natives-*.jar',
+            '**/authlib/2.*/**',
+            '**/authlib/6.*/**',
+            '**/authlib/7.*/**',
+            '**/tlauncher/authlib/**',
+            '**/datafixerupper/4.*/**',
+            '**/datafixerupper/8.*/**',
+            '**/datafixerupper/9.*/**',
+            '**/guava/21.0/**',
+            '**/gson/2.8.0/**',
+            '**/fastutil/8.2.1/**',
+            '**/netty-*/4.1.*/**',
+            '**/lwjgl*/3.2.2/**',
+            '**/asm*/9.0/**',
+            '**/spongepowered/mixin/0.8.2/**'
+        ])
+    } else {
+        compileOnly "net.fabricmc:fabric-loader:${project.loader_version}"
+        compileOnly 'net.fabricmc:sponge-mixin:0.17.3+mixin.0.8.7'
+        compileOnly 'org.ow2.asm:asm:9.10.1'
+        compileOnly 'org.ow2.asm:asm-analysis:9.10.1'
+        compileOnly 'org.ow2.asm:asm-commons:9.10.1'
+        compileOnly 'org.ow2.asm:asm-tree:9.10.1'
+        compileOnly 'org.ow2.asm:asm-util:9.10.1'
+        compileOnly 'com.google.guava:guava:33.6.0-jre'
+        compileOnly 'com.google.code.gson:gson:2.14.0'
+        compileOnly 'it.unimi.dsi:fastutil:8.5.18'
+        compileOnly 'org.joml:joml:1.10.8'
+        compileOnly 'org.slf4j:slf4j-api:2.0.17'
+    }
+
+    // Annotation & MixinExtras dependencies (using local Gradle cache when available to avoid SSL/network dependency)
+    def gradleCacheDir = new File(System.getProperty('user.home'), '.gradle/caches/modules-2/files-2.1')
+    def cachedJars = [
+        new File(gradleCacheDir, 'org.projectlombok/lombok/1.18.34/ec547ef414ab1d2c040118fb9c1c265ada63af14/lombok-1.18.34.jar'),
+        new File(gradleCacheDir, 'org.jetbrains/annotations/26.0.2/c7ce3cdeda3d18909368dfe5977332dfad326c6d/annotations-26.0.2.jar'),
+        new File(gradleCacheDir, 'com.google.code.findbugs/jsr305/3.0.2/25ea2e8b0c338a877313bd4672d3fe056ea78f0d/jsr305-3.0.2.jar'),
+        new File(gradleCacheDir, 'io.github.llamalad7/mixinextras-fabric/0.5.4/5e167154bcb9942111313a5e186e16cd7265f858/mixinextras-fabric-0.5.4.jar')
+    ].findAll { it.exists() }
+    if (!cachedJars.isEmpty()) {
+        compileOnly files(cachedJars)
+    } else {
+        compileOnly 'org.projectlombok:lombok:1.18.34'
+        compileOnly 'org.jetbrains:annotations:26.0.2'
+        compileOnly 'com.google.code.findbugs:jsr305:3.0.2'
+    }
+
+    // Fabric API, MixinExtras, and optional Baritone integration from processedMods cache
+    if (processedModsDir.exists()) {
+        compileOnly fileTree(dir: processedModsDir, include: [
+            'fabric-api-base-2.*.jar',
+            'fabric-lifecycle-events-v1-4.*.jar',
+            'fabric-networking-api-v1-6.*.jar',
+            'fabric-rendering-v1-25.*.jar',
+            'fabric-resource-loader-v0-3.3.*.jar',
+            'fabric-resource-loader-v1-2.*.jar',
+            'fabric-command-api-v2-3.*.jar',
+            'fabric-key-mapping-api-v1-2.*.jar',
+            'fabric-screen-api-v1-5.*.jar',
+            'fabric-events-interaction-v0-5.*.jar',
+            'fabric-entity-events-v1-5.*.jar',
+            'fabric-message-api-v1-7.*.jar',
+            'mixinextras-0.5.4-*.jar',
+            'baritone-*.jar'
+        ])
+    }
+}
+
+tasks.withType(JavaCompile).configureEach {
+    it.options.encoding = 'UTF-8'
+    it.options.release = 25
+    it.options.compilerArgs += ['-Xlint:-deprecation', '-Xlint:-unchecked', '-Xlint:-rawtypes', '-Xmaxerrs', '1000']
+}
+
+processResources {
+    inputs.property 'version', project.version
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+
+    filesMatching('fabric.mod.json') {
+        expand 'version': project.version
+    }
+}
+
+jar {
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    from('LICENSE') {
+        rename { "${it}_${project.base.archivesName.get()}" }
+    }
+    from {
+        configurations.shade.collect { it.isDirectory() ? it : zipTree(it) }
+    }
+}
+
+tasks.register('shadowJar', Jar) {
+    group = 'build'
+    description = 'Assembles a fat/shadow JAR containing compiled classes, resources, and shaded dependencies.'
+    archiveClassifier.set('all')
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    from sourceSets.main.output
+    from {
+        configurations.shade.collect { it.isDirectory() ? it : zipTree(it) }
+    }
+}
+
+tasks.named('assemble') {
+    dependsOn tasks.named('shadowJar')
+}
